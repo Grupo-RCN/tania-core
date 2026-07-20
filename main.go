@@ -24,6 +24,8 @@ import (
 	tasksserver "github.com/Tanibox/tania-core/src/tasks/server"
 	taskstorage "github.com/Tanibox/tania-core/src/tasks/storage"
 	userserver "github.com/Tanibox/tania-core/src/user/server"
+	sentry "github.com/getsentry/sentry-go"
+	sentryecho "github.com/getsentry/sentry-go/echo"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -49,6 +51,21 @@ func init() {
 
 func main() {
 	e := echo.New()
+
+	// Error tracking + tracing - empty DSN disables it.
+	if dsn := *config.Config.SentryDsn; dsn != "" {
+		err := sentry.Init(sentry.ClientOptions{
+			Dsn:              dsn,
+			Environment:      *config.Config.SentryEnvironment,
+			EnableTracing:    true,
+			TracesSampleRate: 0.2,
+			SendDefaultPII:   false,
+		})
+		if err != nil {
+			log.Errorf("sentry.Init: %s", err)
+		}
+		defer sentry.Flush(2 * time.Second)
+	}
 
 	// Initialize DB.
 	log.Print("Using " + *config.Config.TaniaPersistenceEngine + " persistance engine")
@@ -134,6 +151,7 @@ func main() {
 
 	// Initialize Echo Middleware
 	e.Use(middleware.Recover())
+	e.Use(sentryecho.New(sentryecho.Options{Repanic: true}))
 	e.Use(headerNoCache)
 	e.Use(logrusMiddleware())
 	e.Use(middleware.RequestID())
@@ -376,6 +394,10 @@ func logrusMiddleware() echo.MiddlewareFunc {
 
 			if err := next(c); err != nil {
 				c.Error(err)
+
+				if hub := sentryecho.GetHubFromContext(c); hub != nil {
+					hub.CaptureException(err)
+				}
 			}
 
 			res := c.Response()

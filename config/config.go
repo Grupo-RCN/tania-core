@@ -28,6 +28,8 @@ type Configuration struct {
 	MysqlPassword          *string   `mapstructure:"mysql_password"`
 	RedirectURI            []*string `mapstructure:"redirect_uri"`
 	ClientID               *string   `mapstructure:"client_id"`
+	SentryDsn              *string   `mapstructure:"sentry_dsn"`
+	SentryEnvironment      *string   `mapstructure:"sentry_environment"`
 }
 
 /*
@@ -71,6 +73,10 @@ func InitViperConfig() {
 	// Built-In implicit grant OAuth 2
 	pflag.StringSlice("redirect_uri", []string{"http://localhost:8080/oauth2_implicit_callback"}, "URI for redirection after authorization server grants access token")
 	pflag.String("client_id", "f0ece679-3f53-463e-b624-73e83049d6ac", "OAuth2 Implicit Grant Client ID for frontend")
+
+	// Error tracking + tracing: https://sentry.io - empty disables it
+	pflag.String("sentry_dsn", "", "Sentry DSN for error tracking and tracing")
+	pflag.String("sentry_environment", "production", "Sentry environment tag")
 
 	pflag.Parse()
 	err := v.BindPFlags(pflag.CommandLine)

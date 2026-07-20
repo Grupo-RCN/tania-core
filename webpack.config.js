@@ -123,6 +123,8 @@ module.exports = {
     new webpack.DefinePlugin({
       'process.env': {
         CLIENT_ID: JSON.stringify(confJSON.client_id),
+        SENTRY_DSN: JSON.stringify(confJSON.sentry_dsn || ''),
+        SENTRY_ENVIRONMENT: JSON.stringify(confJSON.sentry_environment || 'production'),
       },
     }),
   ],

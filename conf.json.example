@@ -14,5 +14,7 @@
         "http://localhost:8080",
         "http://127.0.0.1:8080"
     ],
-    "client_id": "f0ece679-3f53-463e-b624-73e83049d6ac"
+    "client_id": "f0ece679-3f53-463e-b624-73e83049d6ac",
+    "sentry_dsn": "",
+    "sentry_environment": "production"
 }
