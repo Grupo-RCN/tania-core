@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+#
+# Local development only. Two targets, one per compose.dev.yml service:
+#
+#   backend   Go toolchain + air. The checkout is bind-mounted at /src and air rebuilds
+#             and restarts the server whenever a .go file changes.
+#   frontend  Node 18 with the npm dependencies baked in at /work/node_modules. The
+#             checkout is bind-mounted at /work/app, so Node's parent-directory module
+#             resolution finds the baked dependencies without a node_modules directory
+#             ever being written into the checkout. webpack runs in watch mode.
+#
+# Nothing here is used by the deploy path: production is built by the `tania` repo.
+
+ARG GO_VERSION=1.25
+ARG NODE_VERSION=18
+
+FROM golang:${GO_VERSION}-bookworm AS backend
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc libc6-dev sqlite3 libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go install github.com/air-verse/air@v1.64.0
+ENV CGO_ENABLED=1
+WORKDIR /src
+EXPOSE 8080
+
+FROM node:${NODE_VERSION}-bookworm AS frontend
+# cypress and chromedriver are test-only and download large binaries on install.
+ENV CYPRESS_INSTALL_BINARY=0 \
+    CHROMEDRIVER_SKIP_DOWNLOAD=true
+WORKDIR /work
+COPY package.json ./package.json
+# Same two fixes the production build in the `tania` repo applies: node-sass does not
+# build on Node 18, so dart-sass stands in; vue-template-compiler must match vue 2.6.10.
+RUN --mount=type=cache,target=/root/.npm \
+    sed -i 's/"node-sass":.*/"sass": "^1.49.0",/' package.json \
+    && npm install \
+    && npm install vue-template-compiler@2.6.10
+WORKDIR /work/app
