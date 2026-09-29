@@ -1,0 +1,79 @@
+# Local development for tania-core — the hot-reload inner loop.
+#
+#   cp .env.dev.example .env.dev
+#   docker compose -f compose.dev.yml --env-file .env.dev up --build
+#   open http://localhost:4180          (login tania / tania — created on first start)
+#
+# Two services share one named volume for the built frontend:
+#   frontend  webpack --watch writes the Vue bundle into the `public` volume.
+#   backend   air rebuilds the Go server on every .go change and serves /api plus the
+#             bundle from `public`, exactly as production does (e.Static("/", "public")).
+#
+# SQLite and uploads live in the `data` volume, never in the checkout. Ports block 4180-4189.
+name: tania-core-dev
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend
+    working_dir: /work/app
+    # webpack.config.js requires ./conf.json (gitignored). Seed it from the example if
+    # absent; the frontend only reads client_id and the Sentry keys from it.
+    command:
+      - sh
+      - -c
+      - >-
+        [ -f conf.json ] || cp conf.json.example conf.json;
+        exec node /work/node_modules/webpack/bin/webpack.js
+        --mode development --watch --watch-poll 1000 --hide-modules
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/work/app
+      - public:/work/app/public
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend
+    working_dir: /src
+    command: >
+      air
+      --build.cmd "go build -o /tmp/tania ."
+      --build.entrypoint "/tmp/tania"
+      --build.include_ext "go"
+      --build.exclude_dir "node_modules,public,resources,languages,uploads,db,postman,scripts,jsonschema,tmp"
+      --build.poll true
+      --build.poll_interval 1000
+      --tmp_dir /tmp/air
+    ports:
+      - "127.0.0.1:${TANIA_CORE_WEB_PORT:-4180}:8080"
+    # tania-core calls viper.AutomaticEnv() with no prefix: each variable below overrides
+    # the matching conf.json key (conf.json itself is only seeded for webpack's benefit).
+    environment:
+      APP_PORT: "8080"
+      TANIA_PERSISTENCE_ENGINE: sqlite
+      SQLITE_PATH: /data/tania.db
+      UPLOAD_PATH_AREA: /data/uploads/areas
+      UPLOAD_PATH_CROP: /data/uploads/crops
+      DEMO_MODE: "${DEMO_MODE:-false}"
+      REDIRECT_URI: "${REDIRECT_URI:-http://localhost:4180,http://127.0.0.1:4180}"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      SENTRY_ENVIRONMENT: "${SENTRY_ENVIRONMENT:-development}"
+    volumes:
+      - .:/src
+      - public:/src/public
+      - data:/data
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+    depends_on:
+      - frontend
+
+volumes:
+  public:
+  data:
+  gomod:
+  gocache:
